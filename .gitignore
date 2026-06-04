@@ -3,9 +3,12 @@ misc_uses.py
 
 /volleyball_dataset
 /backup_dataset
-/training-outputs
+outputs
 
-*/__pycache__/
+/ka_train
+
+__pycache__/
+
 
 /.idea
 

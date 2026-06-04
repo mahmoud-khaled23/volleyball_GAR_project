@@ -1,10 +1,17 @@
 import math
-
+import numpy as np
 import torch
-from sympy import ceiling
 from torch import nn
 import torchvision.models as models
 import torch.optim as optim
+
+import os
+import pickle
+from src.volleyball_data_loader import VolleyBallDataSet
+from src.volleyball_data_loader import get_preprocess
+from src.data_helper import get_root_dirs
+from torch.utils.data import DataLoader
+from src.utils import EarlyStopping
 
 
 class ImageLevelModel(nn.Module):
@@ -18,57 +25,68 @@ class ImageLevelModel(nn.Module):
         self.criterion = None
         self.accuracy = None
         self.save_interval = None
+        self.early_stopping = None
 
-        self.prepare_model()
+        self._prepare_model()
 
-    def prepare_model(self):
+    def _prepare_model(self):
         model = models.resnet50(pretrained=True)
         model = nn.Sequential(*(list(model.children())[:-1]))
-        fc2 = nn.Linear(2048, self.num_classes)
 
         fc_layers = nn.Sequential(
-            fc2
+            nn.Dropout(0.5, inplace=False),
+            nn.Linear(2048, 16),
+            nn.BatchNorm1d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5, inplace=False),
+            nn.Linear(16, self.num_classes)
         )
         self.backbone_model = model
         self.classifier = fc_layers
 
-    def optimizers(self, optim):
+    def model_summary(self):
+        print(f'backbone model')
+        print(self.backbone_model)
+
+        print(f'classifier')
+        print(self.classifier)
+
+    def _optimizers(self, optim):
         optims = dict(
             Adam=torch.optim.Adam([{'params': self.backbone_model.parameters()},
                                    {'params': self.classifier.parameters()}],
                                   lr=optim['lr'],
                                   weight_decay=optim['weight_decay']),
-            # SGD=torch.optim.SGD([{'params': self.backbone_model.parameters()},
-            #                      {'params': self.classifier.parameters()}],
-            #                     lr=optim['lr'],
-            #                     weight_decay=optim['weight_decay'])
+            SGD=torch.optim.SGD([{'params': self.backbone_model.parameters()},
+                                 {'params': self.classifier.parameters()}],
+                                lr=optim['lr'],
+                                weight_decay=optim['weight_decay'])
         )
         return optims[optim['optimizer']]
 
-    def set_metrics(self, optimizer, criterion, accuracy, save_interval=3):
-        self.optimizer = self.optimizers(optimizer)
-        self.optimizer = torch.optim.Adam([{'params': self.backbone_model.parameters()},
-                                           {'params': self.classifier.parameters()}],
-                                          lr=optimizer['lr'],
-                                          weight_decay=optimizer['weight_decay'])
+    def set_metrics(self, optimizer, criterion, accuracy, save_interval=5, early_stopping=None):
+        self.optimizer = self._optimizers(optimizer)
         self.criterion = criterion
         self.accuracy = accuracy
         self.save_interval = save_interval
+        self.early_stopping = early_stopping
+
+    def state_dicts(self):
+        model_state_dcts = {
+            "backbone_model": self.backbone_model.state_dict,
+            "classifier_model": self.classifier.state_dict
+        }
+        return model_state_dcts
 
     def train_model(self, trainLoader, backbone_model, classifier, optimizer, device):
         backbone_model.train()
         classifier.train()
 
         criterion = self.criterion
-        train_loss_per_batch = 0
+        running_loss = 0
         total_correct_predictions = 0
-        num_of_steps = len(trainLoader.dataset) / len(trainLoader)
 
-        inter = math.floor(num_of_steps * 0.25)
         for batch_idx, (data, target) in enumerate(trainLoader):
-            # if batch_idx > 5:
-            #     break
-
             data, target = data.to(device), target.to(device)
             optimizer.zero_grad()
 
@@ -80,67 +98,60 @@ class ImageLevelModel(nn.Module):
             loss.backward()
             optimizer.step()
 
-            train_loss_per_batch += loss.item() * data.size(0)
+            running_loss += loss.item() * data.size(0)
 
             prediction = torch.argmax(output, dim=1)
-            correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target))
+            correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target)).item()
 
             total_correct_predictions += correct_predictions
-            # if (num_of_steps/(batch_idx+1)) % inter == 0:
-            #     print(f'steps: {batch_idx*num_of_steps}/{trainLoader.dataset}')
 
-
-        total_loss = train_loss_per_batch / len(trainLoader.dataset)
+        total_loss = running_loss / len(trainLoader.dataset)
         total_accuracy = total_correct_predictions / len(trainLoader.dataset)
 
         return backbone_model, classifier, optimizer, total_loss, total_accuracy
 
-    def eval_model(self, valLoader, device):
+    def eval_model(self, valLoader, backbone_model, classifier, device):
+        backbone_model = backbone_model
+        classifier = classifier
+        criterion = self.criterion
 
-        backbone_model = self.backbone_model
-        classifier = self.classifier
-
-        val_loss_per_batch = 0
+        running_loss = 0
         total_correct_predictions = 0
 
         with torch.no_grad():
             backbone_model.eval(), classifier.eval()
 
             for batch_idx, (data, target) in enumerate(valLoader):
-                if batch_idx > 2:
-                    break
                 data, target = data.to(device), target.to(device)
 
-                print(f'batch steps in VAL: {batch_idx}')
                 output = backbone_model(data)
                 output = output.view(output.size(0), -1)
                 output = classifier(output)
 
                 loss = criterion(output, target)
-                val_loss_per_batch += loss.item() * data.size(0)
+                running_loss += loss.item() * data.size(0)
 
                 prediction = torch.argmax(output, dim=1)
-                correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target))
+                correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target)).item()
 
                 total_correct_predictions += correct_predictions
 
-        total_loss = val_loss_per_batch / len(valLoader.dataset)
+        total_loss = running_loss / len(valLoader.dataset)
         total_acc = total_correct_predictions / len(valLoader.dataset)
 
         return total_loss, total_acc
 
-    def forward(self, trainLoader, valLoader, epochs, output_path):
-        print(self.backbone_model)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    def forward(self, trainLoader, valLoader, epochs, output_path, device):
+        # print(self.backbone_model)
 
         backbone_model = self.backbone_model
         classifier = self.classifier
-        save_interval = self.save_interval
+        
+        if torch.cuda.is_available():
+            backbone_model.cuda()
+            classifier.cuda()
 
-        # optimizer = torch.optim.Adam([{'params': self.backbone_model.parameters()},
-        #                                    {'params': self.classifier.parameters()}],
-        #                                   lr=optimizer['lr'],
-        #                                   weight_decay=optimizer['weight_decay'])
+        save_interval = self.save_interval
         optimizer = self.optimizer
 
         train_losses = []
@@ -148,8 +159,14 @@ class ImageLevelModel(nn.Module):
         train_accuracies = []
         val_accuracies = []
 
+        train_dataset_length = len(trainLoader.dataset)
+        num_of_steps = 0
+        backbone_model_best_weights = None
+        classifier_model_best_weights = None
+
         for epoch in range(epochs):
-            print(f'epoch {epoch+1}/{epochs}, ')
+            num_of_steps += train_dataset_length
+            print(f'epoch: {epoch + 1}/{epochs}, steps: {num_of_steps}/{train_dataset_length * epochs}')
             backbone_model, classifier, optimizer, train_loss, train_accuracy = self.train_model(trainLoader,
                                                                                                  backbone_model,
                                                                                                  classifier,
@@ -158,11 +175,13 @@ class ImageLevelModel(nn.Module):
             train_losses.append(train_loss)
             train_accuracies.append(train_accuracy)
 
-            val_loss, val_accuracy = self.eval_model(valLoader, device)
+            val_loss, val_accuracy = self.eval_model(valLoader, backbone_model, classifier, device)
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
+            print(f'\ttrain loss: {train_loss:.4f} - train accuracy: {(train_accuracy * 100):.2f}%,'
+                  f' val loss: {val_loss: .4f} - val accuracy: {(val_accuracy * 100): .2f} % ')
 
-            if (epoch + 1) % save_interval == 0:
+            if epochs - epoch <= 5:
                 checkpoint = {
                     "epoch": epoch + 1,
                     "backbone_model_state_dict": self.backbone_model.state_dict(),
@@ -171,104 +190,97 @@ class ImageLevelModel(nn.Module):
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                 }
-                torch.save(checkpoint, f'{output_path}/b1/volleyball_checkpoint{epoch + 1}.pth')
+                checkpoint_filename = f'{output_path}/volleyball_checkpoint_on_epoch_{epoch + 1}.pth'
+                torch.save(checkpoint, checkpoint_filename)
 
-        torch.save(self.backbone_model.state_dict(), f'{output_path}/b1/backbone_model_state_dict.pth')
-        torch.save(self.classifier.state_dict(), f'{output_path}/b1/classifier_state_dict.pth')
+            self.early_stopping(val_loss, self)
+            if self.early_stopping.best_model:
+                backbone_model_best_weights = self.backbone_model.state_dict
+                classifier_model_best_weights = self.classifier.state_dict
+
+            if self.early_stopping.early_stop:
+                break
+        backbone_filename = f'{output_path}/backbone_model_state_dict.pth'
+        classifier_filename = f'{output_path}/classifier_state_dict.pth'
+        torch.save(backbone_model_best_weights, backbone_filename)
+        torch.save(classifier_model_best_weights, classifier_filename)
 
         loss_acc_epochs = {
             "train_losses": train_losses,
             "val_losses": val_losses,
             "train_acc": train_accuracies,
-            "val_acc": val_accuracies,
+            "val_acc": val_accuracies
         }
+
+
 
         with open(f'{output_path}/loss_acc.pickle', 'wb') as file:
             pickle.dump(loss_acc_epochs, file)
 
-    def test_model(self, testLoader):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    def test_model(self, testLoader, device):
+        self.backbone_model.eval(), self.classifier.eval()
         total_correct_predictions = 0
-        for batch_idx, (data, target) in enumerate(train_loader):
+        all_predictions = []
+        for batch_idx, (data, target) in enumerate(testLoader):
             data, target = data.to(device), target.to(device)
 
-            print(f'batch steps in TEST: {batch_idx}')
             output = self.backbone_model(data)
             output = output.view(output.size(0), -1)
             output = self.classifier(output)
 
             prediction = torch.argmax(output, dim=1)
-            correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target))
+            correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target)).item()
 
             total_correct_predictions += correct_predictions
+            all_predictions.append(prediction.numpy())
 
         total_acc = total_correct_predictions / len(testLoader.dataset)
-        return total_acc
+        return total_acc, np.reshape(all_predictions, -1)
 
+    def load_state_dicts(self, backbone_st, classifier_st):
+        self.backbone_model.load_state_dict(torch.load(backbone_st, map_location='cpu'))
+        self.classifier.load_state_dict(torch.load(classifier_st, map_location='cpu'))
 
-import pickle
-from src.volleyball_data_loader import VolleyBallDataSet
-from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
 
 if __name__ == '__main__':
-    root_dataset = '/home/ma7moud-5aled/PycharmProjects/vollyball_GAR_project/volleyball_dataset/'
-    train_path = root_dataset + 'videos/train'
-    val_path = root_dataset + 'videos/val'
+    root, root_dataset, root_videos, root_output = get_root_dirs()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    annot_pkl_path = root_dataset + "volleyball-baseline-annotations/b1_annot.pickle"
-    root_training_output_path = "/home/ma7moud-5aled/PycharmProjects/vollyball_GAR_project/training-outputs"
+    modelo = models.resnet50(pretrained=True)
+    # print(modelo)
 
-    preprocess = transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.CenterCrop((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    train_annot_dct = root_dataset + "structured-data/volleyball-annotations/train-target-annot.pickle"
+    val_annot_dct = root_dataset + "structured-data/volleyball-annotations/val-target-annot.pickle"
 
-    with open(annot_pkl_path, 'rb') as file:
-        data_annot = pickle.load(file)
+    preprocess = get_preprocess()
 
-    train_annot = data_annot["train"]
-    val_annot = data_annot["val"]
+    with open(train_annot_dct, 'rb') as tr, open(val_annot_dct, 'rb') as vl:
+        train_data = pickle.load(tr)
+        val_data = pickle.load(vl)
 
     batch_size = 32
-    train_loader = DataLoader(VolleyBallDataSet(train_path, train_annot, preprocess=preprocess), batch_size=batch_size)
-    val_loader = DataLoader(VolleyBallDataSet(val_path, val_annot, preprocess=preprocess), batch_size=batch_size)
-
-    print(f'len of dataset: {train_loader.__len__()}')
-    print(f'len of dataset: {len(train_loader)}')
-    print(f'len of dataset: {len(train_loader.dataset)}')
+    train_loader = DataLoader(VolleyBallDataSet(root_videos, train_data, preprocess=preprocess),
+                              batch_size=batch_size)
+    val_loader = DataLoader(VolleyBallDataSet(root_videos, val_data, preprocess=preprocess),
+                            batch_size=batch_size)
 
     num_classes = 8
-    epochs = 10
     my_model = ImageLevelModel(num_classes)
 
-    optimizer = "Adam"
-    lr = 1e-2
-    weight_decay = 1e-3
     optim_params = {
-        "optimizer": optimizer,
-        "lr": lr,
-        "weight_decay": weight_decay
+        "optimizer": "Adam",
+        "lr": 1e-2,
+        "weight_decay": 1e-3
     }
     criterion = torch.nn.CrossEntropyLoss()
     acc = "accuracy"
-    # my_model.set_metrics(optimizer=optim_params, criterion=criterion, accuracy=acc)
-    #
-    # my_model.forward(train_loader, val_loader, epochs, output_path=root_training_output_path)
+    save_interval = 10
+    early_stopping = EarlyStopping()
+    my_model.set_metrics(optimizer=optim_params,
+                         criterion=criterion,
+                         accuracy=acc,
+                         save_interval=save_interval,
+                         early_stopping=early_stopping)
 
-    backbone_model_state_path = '/home/ma7moud-5aled/PycharmProjects/vollyball_GAR_project/training-outputs/b1/backbone_model_state_dict.pth'
-    classifier_model_state_path = '/home/ma7moud-5aled/PycharmProjects/vollyball_GAR_project/training-outputs/b1/classifier_state_dict.pth'
-
-    test_model = ImageLevelModel(num_classes)
-    with open(backbone_model_state_path, 'rb') as backnone, open(classifier_model_state_path, 'rb') as classifier:
-        test_model.backbone_model.load_state_dict(torch.load(backnone))
-        test_model.classifier.load_state_dict(torch.load(classifier))
-
-    test_path = root_dataset + '/videos/test'
-    test_loader = DataLoader(VolleyBallDataSet(test_path, train_annot, preprocess=preprocess), batch_size=batch_size)
-
-    test_acc = test_model.test_model(test_loader)
-    print(test_acc)
+    epochs = 50
+    # my_model.forward(train_loader, val_loader, epochs, output_path=root_output, device=device)
