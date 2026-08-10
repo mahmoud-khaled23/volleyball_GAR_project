@@ -1,4 +1,6 @@
-import math
+import pathlib
+
+import cv2
 import numpy as np
 import torch
 from torch import nn
@@ -7,9 +9,10 @@ import torch.optim as optim
 
 import os
 import pickle
+
+from src.baselines.b3.b3_DataLoader import VolleyBallPersonDataLevel
 from src.volleyball_data_loader import VolleyBallDataSet
 from src.volleyball_data_loader import preprocessors
-from src.data_helper import get_root_dirs
 from torch.utils.data import DataLoader
 from src.utils import EarlyStopping
 
@@ -17,9 +20,9 @@ from src.utils import EarlyStopping
 # Baseline 1 is working on the image level with spatial model. >> No temporal <<
 # The model is based on fine-tuning pretrained resnet50 on fc7 layer
 #
-class ImageLevelModel(nn.Module):
+class PersonLevelModel(nn.Module):
     def __init__(self, num_classes):
-        super(ImageLevelModel, self).__init__()
+        super(PersonLevelModel, self).__init__()
         self.backbone_model = None
         self.classifier = None
         self.num_classes = num_classes
@@ -38,11 +41,11 @@ class ImageLevelModel(nn.Module):
 
         fc_layers = nn.Sequential(
             nn.Dropout(0.5, inplace=False),
-            nn.Linear(2048, 16),
-            nn.BatchNorm1d(16, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.Linear(2048, 18),
+            nn.BatchNorm1d(18, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
             nn.ReLU(inplace=True),
             nn.Dropout(0.5, inplace=False),
-            nn.Linear(16, self.num_classes)
+            nn.Linear(18, self.num_classes)
         )
         self.backbone_model = model
         self.classifier = fc_layers
@@ -85,6 +88,8 @@ class ImageLevelModel(nn.Module):
         backbone_model.train()
         classifier.train()
 
+        criterion = self.criterion
+
         running_loss = 0
         total_correct_predictions = 0
 
@@ -95,7 +100,7 @@ class ImageLevelModel(nn.Module):
             output = backbone_model(data)
             output = output.view(output.size(0), -1)
             output = classifier(output)
-            loss = self.criterion(output, target)
+            loss = criterion(output, target)
 
             loss.backward()
             optimizer.step()
@@ -275,29 +280,33 @@ class ImageLevelModel(nn.Module):
 
 
 if __name__ == '__main__':
-    root, root_dataset, root_videos, root_output = get_root_dirs()
+    # root, root_dataset, root_videos, root_output = get_root_dirs()
+    root_path = pathlib.Path.cwd().parents[2]
+    root_videos = os.path.join(root_path, 'volleyball', 'volleyball_', 'videos')
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     modelo = models.resnet50(pretrained=True)
     # print(modelo)
 
-    train_annot_dct = root_dataset + "structured-data/volleyball-annotations/train-target-annot.pickle"
-    val_annot_dct = root_dataset + "structured-data/volleyball-annotations/val-target-annot.pickle"
+    train_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/train-target-annot.pickle"
+    val_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/val-target-annot.pickle"
 
+    root_output = os.path.join(root_path, 'outputs')
     preprocess = preprocessors()
 
     with open(train_annot_dct, 'rb') as tr, open(val_annot_dct, 'rb') as vl:
         train_data = pickle.load(tr)
         val_data = pickle.load(vl)
+    # dataset = VolleyBallPersonDataLevel(root_videos, train_data, preprocess=preprocess)
 
     batch_size = 32
-    train_loader = DataLoader(VolleyBallDataSet(root_videos, train_data, preprocess=preprocess),
+    train_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, train_data, preprocess=preprocess),
                               batch_size=batch_size)
-    val_loader = DataLoader(VolleyBallDataSet(root_videos, val_data, preprocess=preprocess),
+    val_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, val_data, preprocess=preprocess),
                             batch_size=batch_size)
 
-    num_classes = 8
-    my_model = ImageLevelModel(num_classes)
+    num_classes = 9
+    my_model = PersonLevelModel(num_classes)
 
     optim_params = {
         "optimizer": "Adam",
@@ -315,4 +324,5 @@ if __name__ == '__main__':
                          early_stopping=early_stopping)
 
     epochs = 50
-    # my_model.forward(train_loader, val_loader, epochs, output_path=root_output, device=device)
+
+    my_model.forward(train_loader, val_loader, epochs, output_path=root_output, device=device)

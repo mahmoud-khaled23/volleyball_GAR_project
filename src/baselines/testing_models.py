@@ -13,7 +13,7 @@ import pickle
 import torch
 from torch.utils.data import DataLoader
 from src.volleyball_data_loader import VolleyBallDataSet
-from src.volleyball_data_loader import get_preprocess
+from src.volleyball_data_loader import preprocessors
 import os
 
 def loss_acc_plot(train_losses, train_accuracies, val_losses, val_accuracies):
@@ -26,6 +26,10 @@ def loss_acc_plot(train_losses, train_accuracies, val_losses, val_accuracies):
     plt.ylabel("Loss")
 
     plt.show()
+
+
+def b1_testing():
+    pass
 
 
 if __name__ == '__main__':
@@ -43,7 +47,7 @@ if __name__ == '__main__':
         test_data = pickle.load(f)
 
     batch_size = 8
-    _, test_preprocess = get_preprocess()
+    _, test_preprocess = preprocessors()
     test_loader = DataLoader(VolleyBallDataSet(root_videos, test_data, preprocess=test_preprocess, shuffle=False), batch_size=batch_size)
 
     device = torch.device("cuda" if torch.cuda.is_available() else 'cpu')

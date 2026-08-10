@@ -41,7 +41,7 @@ class VolleyBallDataSet(Dataset):
             random.shuffle(self.data_list)
 
 
-def get_preprocess():
+def preprocessors():
     train_preprocess = transforms.Compose([
         transforms.Resize((256, 256)),
         transforms.CenterCrop((224, 224)),
