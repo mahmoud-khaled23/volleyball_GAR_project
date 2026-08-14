@@ -14,10 +14,15 @@ class BoxInfo:
         self.grouping = grouping
         self.generated = generated
 
+    def get_frame_id(self):
+        return self.frame_id
+
+    def get_lost(self):
+        return self.lost
+
     def get_box_info(self):
         return {'frame_id': self.frame_id,
                 'box': self.box,
-                'lost': self.lost,
                 'category': self.category
                 }
 

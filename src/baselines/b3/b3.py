@@ -41,11 +41,11 @@ class PersonLevelModel(nn.Module):
 
         fc_layers = nn.Sequential(
             nn.Dropout(0.5, inplace=False),
-            nn.Linear(2048, 18),
-            nn.BatchNorm1d(18, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5, inplace=False),
-            nn.Linear(18, self.num_classes)
+            nn.Linear(2048, self.num_classes),
+            # nn.BatchNorm1d(18, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            # nn.ReLU(inplace=True),
+            # nn.Dropout(0.5, inplace=False),
+            # nn.Linear(18, self.num_classes)
         )
         self.backbone_model = model
         self.classifier = fc_layers
@@ -94,12 +94,21 @@ class PersonLevelModel(nn.Module):
         total_correct_predictions = 0
 
         for batch_idx, (data, target) in enumerate(trainLoader):
+            # The input shape is x: [B, 12, 3, 224, 224]
+            B, P, C, H, W = data.shape
+
+            data = data.view(-1, C, H, W)
+            target = target.view(-1)
+
             data, target = data.to(device), target.to(device)
             optimizer.zero_grad()
 
             output = backbone_model(data)
+            # output.shape == [B * 12, 2048, 1, 1]
+            print(output.size(0)) # B * 12
             output = output.view(output.size(0), -1)
             output = classifier(output)
+
             loss = criterion(output, target)
 
             loss.backward()
@@ -130,6 +139,10 @@ class PersonLevelModel(nn.Module):
             backbone_model.eval(), classifier.eval()
 
             for batch_idx, (data, target) in enumerate(valLoader):
+                B, P, C, H, W = data.shape
+                data = data.view(-1, C, H, W)
+                target = target.view(-1)
+
                 data, target = data.to(device), target.to(device)
 
                 output = backbone_model(data)
@@ -301,9 +314,9 @@ if __name__ == '__main__':
 
     batch_size = 32
     train_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, train_data, preprocess=preprocess),
-                              batch_size=batch_size)
+                              batch_size=batch_size, num_workers=8)
     val_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, val_data, preprocess=preprocess),
-                            batch_size=batch_size)
+                            batch_size=batch_size, num_workers=8)
 
     num_classes = 9
     my_model = PersonLevelModel(num_classes)
@@ -313,7 +326,7 @@ if __name__ == '__main__':
         "lr": 1e-2,
         "weight_decay": 1e-3
     }
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=-1)
     acc = "accuracy"
     save_interval = 10
     early_stopping = EarlyStopping()
