@@ -94,21 +94,6 @@ def get_videos_dirs():
 
     return train_dirs, val_dirs, test_dirs
 
-# for >>> baseline 1 <<<, we get the target frame from the single clip at the video
-# the dataset is formated as videos/annotations.txt
-# the text file annotations.txt is formated as at the first column 'target_frame_no of the single clip of the video then group activity then single annot of every single player with bounding box'
-# the function below get [clip_no, group activity]
-def load_video_annots(video_annot):
-    with open(video_annot, 'r') as file:
-        clip_category = {}
-
-        for line in file:
-            items = line.strip().split(' ')[:2]
-            clip_dir = items[0].replace('.jpg', '')
-            clip_category[clip_dir] = items[1]
-
-        return clip_category
-
 from src.boxinfo import BoxInfo
 
 # tracking_annot_path = 'volleyball/volleyball_tracking_annotation/volleyball_tracking_annotation'
@@ -208,42 +193,38 @@ def load_tracking_annots(dirs_list, tracking_annot_path: str):
             # print(clip_track_annots)
     return clip_track_annots
 
-
-def get_cropped_images(videos_path, annot_lst):
-    frame_boxes_lst = []
-    for annot_dct in annot_lst:
-        vid = annot_dct['video']
-        clip = annot_dct['clip']
-        frame_id = annot_dct['frame_id']
-        image_path = os.path.join(videos_path, vid, clip, f'{frame_id}.jpg')
-        image = Image.open(image_path).convert('RGB')
-
-        players_id = []
-        cropped_boxes = []
-        categories = []
-
-        for player_id in annot_dct['players_id']:
-            players_id.append(player_id)
-
-        for box in annot_dct['boxes']:
-            cropped_box = image.crop(box)
-            cropped_boxes.append(cropped_box)
-
-            # cv2.imshow("Image", np.array(cropped_box))
-            # cv2.waitKey(0)
-            # cv2.destroyAllWindows()
-
-
-        for cat in annot_dct['category']:
-            categories.append(cat)
-
-        frame_boxes_lst.append([players_id, cropped_boxes, categories])
-
-    return frame_boxes_lst
-
-
-
-
+#
+# def get_cropped_images(videos_path, annot_lst):
+#     frame_boxes_lst = []
+#     for annot_dct in annot_lst:
+#         vid = annot_dct['video']
+#         clip = annot_dct['clip']
+#         frame_id = annot_dct['frame_id']
+#         image_path = os.path.join(videos_path, vid, clip, f'{frame_id}.jpg')
+#         image = Image.open(image_path).convert('RGB')
+#
+#         players_id = []
+#         cropped_boxes = []
+#         categories = []
+#
+#         for player_id in annot_dct['players_id']:
+#             players_id.append(player_id)
+#
+#         for box in annot_dct['boxes']:
+#             cropped_box = image.crop(box)
+#             cropped_boxes.append(cropped_box)
+#
+#             # cv2.imshow("Image", np.array(cropped_box))
+#             # cv2.waitKey(0)
+#             # cv2.destroyAllWindows()
+#
+#
+#         for cat in annot_dct['category']:
+#             categories.append(cat)
+#
+#         frame_boxes_lst.append([players_id, cropped_boxes, categories])
+#
+#     return frame_boxes_lst
 
 def prepare_dataset():
     # get train, val and test folders in a sorted way
@@ -260,7 +241,7 @@ def prepare_dataset():
     train, val, test = get_videos_dirs()
 
     train_annots = load_tracking_annots(train, tracking_annot_path)
-    train_crops = get_cropped_images(videos_path, train_annots)
+    # train_crops = get_cropped_images(videos_path, train_annots)
 
     # print('the length of annot : ' + str(len(train_annots)))
     # print(type(train_annots[0]))
@@ -268,10 +249,10 @@ def prepare_dataset():
     # print(type(train_annots[0]['box']))
 
     val_annots = load_tracking_annots(val, tracking_annot_path)
-    val_crops = get_cropped_images(videos_path, val_annots)
+    # val_crops = get_cropped_images(videos_path, val_annots)
 
     test_annots = load_tracking_annots(test, tracking_annot_path)
-    test_crops = get_cropped_images(videos_path, test_annots)
+    # test_crops = get_cropped_images(videos_path, test_annots)
 
 
     with open(os.path.join(output_annot_path, 'train_players_crops.pickle'), 'wb') as tr_file:
