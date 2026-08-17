@@ -11,9 +11,9 @@ from PIL import Image
 
 class VolleyBallPersonDataLevel(Dataset):
 
-    def __init__(self, root_videos_path, data_list, preprocess=None, shuffle=False):
+    def __init__(self, videos_path, data_list, preprocess=None, shuffle=False):
         # super().__init__(self)
-        self.root_videos_path = root_videos_path
+        self.videos_path = videos_path
         self.data_list = data_list
         self.preprocess = preprocess
         self._shuffle(shuffle)
@@ -21,26 +21,45 @@ class VolleyBallPersonDataLevel(Dataset):
     # At first, we train on person activity so we will feed the boxes alone with no group activity
 
     def __getitem__(self, idx):
-        player_ids, player_crops, player_categories = self.data_list[idx]
+        """
+        Returns a single sample: (processed_crops, labels)
+
+        Returns:
+            - processed_crops: tensor [12, 3, 224, 224] (length 12, padded if needed)
+            - processed_labels: tensor [12] with -1 for padding
+        """
+        vid, clip, frame = self.data_list[idx]['vid'], self.data_list[idx]['clip'], self.data_list[idx]['frame']
+
+        image_path = os.path.join(self.videos_path, vid, clip, f'{frame}.jpg')
+        image = Image.open(image_path).convert('RGB')
+
+        boxes, player_category = self.data_list[idx]['boxes'], self.data_list[idx]['category']
 
         processed_crops = []
         processed_labels = []
 
-        for crop, label in zip(player_crops, player_categories):
-            if self.preprocess is not None:
-                crop = self.preprocess(crop)
-            processed_crops.append(crop)
+        # ✅ FIXED: Process each box correctly
+        for box, label in zip(boxes, player_category):
+            # cropped_box = image.crop(box)
+            # processed_crop = preprocessor(image.crop(box))
+            processed_crops.append(preprocessor(image.crop(box)))
             processed_labels.append(label)
 
-        # pad to 12 if needed
+        # Pad to exactly 12 players with zero tensors and -1 labels
         while len(processed_crops) < 12:
             zero_crop = torch.zeros((3, 224, 224), dtype=torch.float32)
             processed_crops.append(zero_crop)
             processed_labels.append(-1)
 
-        return processed_crops[:12], processed_labels[:12]
+        # Ensure exactly 12 players (truncate if more)
+        processed_crops = torch.stack(processed_crops[:12])
+        processed_labels = torch.tensor(processed_labels[:12], dtype=torch.long)
 
-        return cropped_image, category
+        # ✅ FIXED: Close image to free memory (important with num_workers)
+        image.close()
+
+        return processed_crops, processed_labels
+
 
 def collate_fn(batch):
     # batch is a list of samples
@@ -50,26 +69,30 @@ def collate_fn(batch):
     max_players = 12
 
     batch_crops = []
-    batch_labels = []
-    for sample in batch:
-        frame_images = []
-        frame_labels = []
+    # batch_labels = []
+    # for sample in batch:
+    #     frame_images = []
+    #     frame_labels = []
+    #
+    #     player_ids, player_crops, player_categories = sample
+    #
+    #     # each of these is already a list of length 12
+    #     for crop, label in zip(player_crops, player_categories):
+    #         crop = preprocessor(crop)
+    #
+    #         frame_images.append(crop)
+    #         frame_labels.append(label)
+    #
+    #     batch_crops.append(torch.stack(frame_images))
+    #     batch_labels.append(torch.tensor(frame_labels, dtype=torch.long))
+    #
+    # # convert to tensors
+    # images = torch.stack(batch_crops)  # [B, 12, 3, 224, 224]
+    # labels = torch.stack(batch_labels)  # [B, 12]
 
-        player_ids, player_crops, player_categories = sample
-
-        # each of these is already a list of length 12
-        for crop, label in zip(player_crops, player_categories):
-            crop = preprocessor(crop)
-
-            frame_images.append(crop)
-            frame_labels.append(label)
-
-        batch_crops.append(torch.stack(frame_images))
-        batch_labels.append(torch.tensor(frame_labels, dtype=torch.long))
-
-    # convert to tensors
-    images = torch.stack(batch_crops)  # [B, 12, 3, 224, 224]
-    labels = torch.stack(batch_labels)  # [B, 12]
+    crops, labels = zip(*batch)
+    images = torch.stack(crops)
+    labels = torch.stack(labels)
 
     return images, labels
 

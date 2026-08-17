@@ -110,13 +110,15 @@ def get_players_boxes(tracking_annot_path):
             # if number of players is more than 12 by mistake stop on player number 12 and ignore others
             if box_info.player_id > 11:
                 continue
-
             player_boxes[box_info.player_id].append(box_info_dct)
 
         frame_boxes_dct = {}
         for player_id, boxes_info in player_boxes.items():
             # for baseline 3, I need just 4 frames before and 4 after the target [5:13] from 6 to 14 ignoring zero indexing
-            boxes_info = boxes_info[5:-6]
+            # boxes_info = boxes_info[5:-6]
+            boxes_info = boxes_info[9:10]
+
+            # boxes_info = list(boxes_info[5]) # for baseline 3, I need just 4 frames before and 4 after the target [5:13] from 6 to 14 ignoring zero indexing
             # player_boxes[player_id] = boxes_info[:-6]
 
             for box_info in boxes_info:
@@ -135,6 +137,7 @@ def get_players_boxes(tracking_annot_path):
                     frame_boxes_dct[box_info['frame_id']] = []
 
                 frame_boxes_dct[box_info['frame_id']].append(player_box)
+
         frame_boxes_lst_dct = {}
         for frame_id, boxes_lst in frame_boxes_dct.items():
             player_id = []
@@ -156,7 +159,9 @@ def get_players_boxes(tracking_annot_path):
         # print(frame_boxes_lst_dct)
         return frame_boxes_lst_dct
 
+
 def load_tracking_annots(dirs_list, tracking_annot_path: str):
+    print(f'Loading tracking annotations for {len(dirs_list)} videos from {tracking_annot_path}')
     clip_track_annots = []
     person_activity_encode = prep_categories()[1]
 
@@ -184,11 +189,11 @@ def load_tracking_annots(dirs_list, tracking_annot_path: str):
                     'video': vid,
                     'clip': clip,
                     'frame_id': frame_id,
-                    'players_id': boxes[0],
+                    # 'players_id': boxes[0],
                     'boxes': boxes[1],
                     'category': category
                 }
-                print(clip_track_annots_players_dct)
+                # print(clip_track_annots_players_dct)
                 clip_track_annots.append(clip_track_annots_players_dct)
             # print(clip_track_annots)
     return clip_track_annots
@@ -256,7 +261,7 @@ def prepare_dataset():
 
 
     with open(os.path.join(output_annot_path, 'train_players_crops.pickle'), 'wb') as tr_file:
-        pickle.dump(train_crops, tr_file, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(train_annots, tr_file, pickle.HIGHEST_PROTOCOL)
 
     bytes_size = os.path.getsize(os.path.join(output_annot_path, 'train_players_crops.pickle'))
     mb_size = bytes_size / (1024 * 1024)
