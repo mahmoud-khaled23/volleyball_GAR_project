@@ -104,7 +104,7 @@ def load_video_annots(video_annot):
 
         return clip_category
 
-from boxinfo import BoxInfo
+# from boxinfo import BoxInfo
 
 tracking_annot_path = 'volleyball/volleyball_tracking_annotation/volleyball_tracking_annotation'
 def load_tracking_annots(tracking_annot_path):

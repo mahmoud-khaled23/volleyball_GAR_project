@@ -28,7 +28,7 @@ class VolleyBallPersonDataLevel(Dataset):
             - processed_crops: tensor [12, 3, 224, 224] (length 12, padded if needed)
             - processed_labels: tensor [12] with -1 for padding
         """
-        vid, clip, frame = self.data_list[idx]['vid'], self.data_list[idx]['clip'], self.data_list[idx]['frame']
+        vid, clip, frame = self.data_list[idx]['video'], self.data_list[idx]['clip'], self.data_list[idx]['frame_id']
 
         image_path = os.path.join(self.videos_path, vid, clip, f'{frame}.jpg')
         image = Image.open(image_path).convert('RGB')
@@ -42,7 +42,7 @@ class VolleyBallPersonDataLevel(Dataset):
         for box, label in zip(boxes, player_category):
             # cropped_box = image.crop(box)
             # processed_crop = preprocessor(image.crop(box))
-            processed_crops.append(preprocessor(image.crop(box)))
+            processed_crops.append(self.preprocess(image.crop(box)))
             processed_labels.append(label)
 
         # Pad to exactly 12 players with zero tensors and -1 labels
@@ -59,6 +59,14 @@ class VolleyBallPersonDataLevel(Dataset):
         image.close()
 
         return processed_crops, processed_labels
+
+
+    def __len__(self):
+        return len(self.data_list) * len(self.data_list[0]['boxes'])
+
+    def _shuffle(self, shuffle):
+        if shuffle:
+            random.shuffle(self.data_list)
 
 
 def collate_fn(batch):
@@ -97,96 +105,9 @@ def collate_fn(batch):
     return images, labels
 
 
-    # def collate_fn(self, batch):
-    #     frames = {}
-    #     video, clip = None, None
-    #     for item in batch:
-    #         video, clip = item["video"], item["clip"]
-    #         frame_key = (item["video"], item["clip"], item["frame_id"])
-    #         frames.setdefault(frame_key, []).append(item)
-    #
-    #     batch_size = len(frames)
-    #     images = torch.zeros((batch_size, 12, 3, 224, 224), dtype=torch.float32)
-    #     targets = torch.full((batch_size, 12), -1, dtype=torch.long)
-    #     # mask = torch.zeros((batch_size, 12), dtype=torch.bool)
-    #
-    #     for frame_index, items in enumerate(frames.values()):
-    #         image_path = os.path.join(self.root_videos_path, frame_index[0], frame_index[1], f'{frame_index[2]}.jpg')
-    #         image = Image.open(image_path).convert('RGB')
-    #
-    #         for item in items:
-    #             pid = item["player_id"]
-    #             if pid < 0 or pid >= 12:
-    #                 continue
-    #
-    #             x1, y1, x2, y2 = item["frame_id"]['box']
-    #             cropped_image = image.crop((x1, y1, x2, y2))
-    #             if self.preprocess:
-    #                 cropped_image = _preprocessor(cropped_image)
-    #
-    #             category = item['frame_id']["category"]
-    #             images[frame_index, pid] = item[frame_index]["image"]
-    #             targets[frame_index, pid] = item["category"]
-    #             # mask[frame_index, pid] = True
-    #
-    #     return images, targets # mask
 
-    def collate_fn_zero_fill(self, batch):
-        """
-        Fill missing players with zero vectors.
-        Assumes batch items are tuples of (player_sequence, label) or similar.
-        """
-        player_id = []
-        sequences = []
-        labels = []
 
-        for item in batch:
-            # item could be: (sequence_dict, label) or (player_list, label)
 
-            player_seq, label = item
-
-            # Ensure we have exactly 12 players
-            filled_seq = self.fill_missing_players_with_zeros(player_seq, num_players=12)
-
-            sequences.append(filled_seq)
-            labels.append(label)
-
-        # Stack into tensors
-        sequences = torch.stack(sequences)
-        labels = torch.tensor(labels)
-
-        return sequences, labels
-
-    def fill_missing_players_with_zeros(self, player_seq, num_players=12):
-        """
-        Fill gaps in player sequence with zero vectors.
-        Assumes player_seq is a dict with player_ids and features.
-        """
-        # If using dict format: {0: features, 2: features, ...} (missing player 1)
-        if isinstance(player_seq, dict):
-            feature_dim = list(player_seq.values())[0].shape[0] if player_seq else 128
-            filled = torch.zeros(num_players, feature_dim)
-
-            for pos, features in player_seq.items():
-                filled[pos] = features
-
-            return filled
-
-        return player_seq
-
-    def __len__(self):
-        return len(self.data_list)
-
-    def _shuffle(self, shuffle):
-        if shuffle:
-            random.shuffle(self.data_list)
-
-def preprocessor(image):
-    return transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])(image)
 
         # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     # def preprocessors(image_level):

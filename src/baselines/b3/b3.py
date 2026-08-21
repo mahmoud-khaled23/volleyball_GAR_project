@@ -10,6 +10,8 @@ import torch.optim as optim
 import os
 import pickle
 
+from torchvision import transforms
+
 from src.baselines.b3.b3_DataLoader import VolleyBallPersonDataLevel
 from src.volleyball_data_loader import VolleyBallDataSet
 from src.volleyball_data_loader import preprocessors
@@ -291,6 +293,27 @@ class PersonLevelModel(nn.Module):
         self.backbone_model.load_state_dict(torch.load(backbone_st, map_location='cpu'))
         self.classifier.load_state_dict(torch.load(classifier_st, map_location='cpu'))
 
+def preprocessor():
+    train_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2),
+        transforms.RandomRotation(15),
+        transforms.RandomGrayscale(p=0.1),
+        transforms.RandomPerspective(p=0.2),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+    ])
+
+    val_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+    ])
+
+    return train_transform, val_transform
 
 if __name__ == '__main__':
     # root, root_dataset, root_videos, root_output = get_root_dirs()
@@ -301,21 +324,30 @@ if __name__ == '__main__':
     modelo = models.resnet50(pretrained=True)
     # print(modelo)
 
-    train_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/train-target-annot.pickle"
-    val_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/val-target-annot.pickle"
+    # train_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/train-target-annot.pickle"
+    # val_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/val-target-annot.pickle"
+    root_path = pathlib.Path.cwd().parents[2]
+    annot_path = os.path.join(root_path, 'outputs', 'b3_data_structure', 'annots')
+
+    train_annot_dct = os.path.join(annot_path, 'train_players_crops.pickle')
+
+    val_annot_dct = os.path.join(annot_path, 'val_players_crops.pickle')
 
     root_output = os.path.join(root_path, 'outputs')
-    preprocess = preprocessors()
+    train_preprocess, val_preprocessor = preprocessor()
 
     with open(train_annot_dct, 'rb') as tr, open(val_annot_dct, 'rb') as vl:
         train_data = pickle.load(tr)
         val_data = pickle.load(vl)
-    # dataset = VolleyBallPersonDataLevel(root_videos, train_data, preprocess=preprocess)
+
+    dataset = VolleyBallPersonDataLevel(root_videos, train_data, preprocess=train_preprocess)
+
+    print(f'dataset size: {len(dataset)}')
 
     batch_size = 32
-    train_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, train_data, preprocess=preprocess),
+    train_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, train_data, preprocess=train_preprocess),
                               batch_size=batch_size, num_workers=8)
-    val_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, val_data, preprocess=preprocess),
+    val_loader = DataLoader(VolleyBallPersonDataLevel(root_videos, val_data, preprocess=val_preprocessor),
                             batch_size=batch_size, num_workers=8)
 
     num_classes = 9
@@ -326,6 +358,7 @@ if __name__ == '__main__':
         "lr": 1e-2,
         "weight_decay": 1e-3
     }
+
     criterion = torch.nn.CrossEntropyLoss(ignore_index=-1)
     acc = "accuracy"
     save_interval = 10
@@ -338,4 +371,4 @@ if __name__ == '__main__':
 
     epochs = 50
 
-    my_model.forward(train_loader, val_loader, epochs, output_path=root_output, device=device)
+    # my_model.forward(train_loader, val_loader, epochs, output_path=root_output, device=device)
