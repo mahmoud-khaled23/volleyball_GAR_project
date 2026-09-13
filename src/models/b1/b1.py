@@ -1,17 +1,14 @@
-import math
 import numpy as np
 import torch
 from torch import nn
 import torchvision.models as models
-import torch.optim as optim
 
-import os
 import pickle
-from src.volleyball_data_loader import VolleyBallDataSet
-from src.volleyball_data_loader import preprocessors
-from src.data_helper import get_root_dirs
+from data_utils.volleyball_data_loader import VolleyBallDataSet
+from data_utils.volleyball_data_loader import preprocessors
+from data_utils.data_helper import get_root_dirs
 from torch.utils.data import DataLoader
-from src.utils import EarlyStopping
+from utils.utils import EarlyStopping
 
 
 # Baseline 1 is working on the image level with spatial model. >> No temporal <<

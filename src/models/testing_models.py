@@ -1,19 +1,14 @@
-import os.path
-
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import confusion_matrix, classification_report
-from src.baselines.b1.b1 import ImageLevelModel
-from src.data_helper import get_root_dirs
-from src.data_helper import b1_load
+from src.models.b1.b1 import ImageLevelModel
+from data_utils.data_helper import get_root_dirs
+from data_utils.data_helper import b1_load
 
 import pickle
 import torch
 from torch.utils.data import DataLoader
-from src.volleyball_data_loader import VolleyBallDataSet
-from src.volleyball_data_loader import preprocessors
+from data_utils.volleyball_data_loader import VolleyBallDataSet
+from data_utils.volleyball_data_loader import preprocessors
 import os
 
 def loss_acc_plot(train_losses, train_accuracies, val_losses, val_accuracies):

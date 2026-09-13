@@ -2,10 +2,11 @@
 misc_uses.py
 
 /volleyball
+/data
 /backup_dataset
 outputs
 
-/ka_train
+/backups
 
 __pycache__/
 output

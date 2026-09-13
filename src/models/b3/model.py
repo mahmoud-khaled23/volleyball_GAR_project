@@ -1,22 +1,18 @@
 import pathlib
 
-import cv2
 import numpy as np
 import torch
 from torch import nn
 import torchvision.models as models
-import torch.optim as optim
 
 import os
 import pickle
 
 from torchvision import transforms
 
-from src.baselines.b3.b3_DataLoader import VolleyBallPersonDataLevel
-from src.volleyball_data_loader import VolleyBallDataSet
-from src.volleyball_data_loader import preprocessors
+from src.models.b3.b3_DataLoader import VolleyBallPersonDataLevel
 from torch.utils.data import DataLoader
-from src.utils import EarlyStopping
+from src.utils.early_stopping import EarlyStopping
 
 
 # Baseline 1 is working on the image level with spatial model. >> No temporal <<
@@ -25,19 +21,6 @@ from src.utils import EarlyStopping
 class PersonLevelModel(nn.Module):
     def __init__(self, num_classes):
         super(PersonLevelModel, self).__init__()
-        self.backbone_model = None
-        self.classifier = None
-        self.num_classes = num_classes
-
-        self.optimizer = None
-        self.criterion = None
-        self.accuracy = None
-        self.save_interval = None
-        self.early_stopping = None
-
-        self._prepare_model()
-
-    def _prepare_model(self):
         model = models.resnet50(pretrained=True)
         model = nn.Sequential(*(list(model.children())[:-1]))
 
@@ -51,6 +34,33 @@ class PersonLevelModel(nn.Module):
         )
         self.backbone_model = model
         self.classifier = fc_layers
+
+        # self.backbone_model = None
+        # self.classifier = None
+        self.num_classes = num_classes
+
+        self.optimizer = None
+        self.criterion = None
+        self.accuracy = None
+        self.save_interval = None
+        self.early_stopping = None
+
+        # self._prepare_model()
+
+    # def _prepare_model(self):
+    #     model = models.resnet50(pretrained=True)
+    #     model = nn.Sequential(*(list(model.children())[:-1]))
+    #
+    #     fc_layers = nn.Sequential(
+    #         nn.Dropout(0.5, inplace=False),
+    #         nn.Linear(2048, self.num_classes),
+    #         # nn.BatchNorm1d(18, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+    #         # nn.ReLU(inplace=True),
+    #         # nn.Dropout(0.5, inplace=False),
+    #         # nn.Linear(18, self.num_classes)
+    #     )
+    #     self.backbone_model = model
+    #     self.classifier = fc_layers
 
     def model_summary(self):
         print(f'backbone model')
@@ -86,6 +96,12 @@ class PersonLevelModel(nn.Module):
         }
         return model_state_dcts
 
+    def forward(self, x):
+        # backbone_model = self.backbone_model
+        x = self.backbone_model(x)
+        x = self.classifier(x)
+        return x
+
     def train_model(self, trainLoader, backbone_model, classifier, optimizer, device):
         backbone_model.train()
         classifier.train()
@@ -119,8 +135,6 @@ class PersonLevelModel(nn.Module):
             running_loss += loss.item() * data.size(0)
 
             prediction = torch.argmax(output, dim=1)
-            # correct_predictions = sum(pred == tar for pred, tar in zip(prediction, target)).item()
-
             correct_predictions = (prediction == target).sum().item()
 
             total_correct_predictions += correct_predictions
@@ -196,7 +210,7 @@ class PersonLevelModel(nn.Module):
             # display(FileLink(checkpoint_filename.replace("/kaggle/working/", ""),
             #                  result_html_prefix=f"click here to download checkpoint {epoch + 1}: "))
 
-    def forward(self, trainLoader, valLoader, epochs, output_path, device):
+    def forward_old(self, trainLoader, valLoader, epochs, output_path, device):
         # print(self.backbone_model)
 
         backbone_model = self.backbone_model
@@ -326,7 +340,7 @@ if __name__ == '__main__':
 
     # train_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/train-target-annot.pickle"
     # val_annot_dct = str(root_path) + "/outputs/b3_data_structure/annots/val-target-annot.pickle"
-    root_path = pathlib.Path.cwd().parents[2]
+    root_path = pathlib.Path.cwd()
     annot_path = os.path.join(root_path, 'outputs', 'b3_data_structure', 'annots')
 
     train_annot_dct = os.path.join(annot_path, 'train_players_crops.pickle')

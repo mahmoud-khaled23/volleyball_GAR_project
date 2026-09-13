@@ -1,55 +1,5 @@
-# import numpy as np # linear algebra
-# import pandas as pd # data processing
-
-import pathlib
-
-import os
-
-import cv2
-import numpy as np
-from PIL import Image
-
-
-#
-# def paths(is_kaggle=False):
-#     root_path = pathlib.Path.cwd().parents[0]
-#     print(root_path)
-#
-#     if is_kaggle:
-#         output_path = os.path.join(root_path, 'working')
-#         dataset_path = os.path.join(root_path, 'input/volleyball')
-#
-#     else:
-#         output_path = os.path.join(root_path, 'outputs')
-#         dataset_path = os.path.join(root_path, 'volleyball')
-#
-#
-#     # output_dir = os.path.join(root_path, "outputs")
-#     return root_path, dataset_path, output_path
-
-def outputs_dirs(outputs_path):
-
-    output_annot_path = os.path.join(outputs_path, 'baselines-annotations')
-
-    # The if condition is for Kaggle because of the every restart of the session
-    if not os.path.exists(output_annot_path):
-        os.makedirs(output_annot_path)
-
-    output_training_path = os.path.join(outputs_path, 'training-outputs')
-
-    # The if condition is for Kaggle because of the every restart of the session
-    if not os.path.exists(output_training_path):
-        os.makedirs(output_training_path)
-
-    return  output_annot_path, output_training_path
-
 def videos_path(dataset_path):
     return os.path.join(dataset_path, 'volleyball_/videos')
-
-
-# print(paths(is_kaggle=True))
-# print(paths(is_kaggle=False))
-
 
 import os
 import pickle
@@ -97,7 +47,7 @@ def get_videos_dirs():
 
     return train_dirs, val_dirs, test_dirs
 
-from src.boxinfo import BoxInfo
+from utils.boxinfo import BoxInfo
 
 # tracking_annot_path = 'volleyball/volleyball_tracking_annotation/volleyball_tracking_annotation'
 def get_players_boxes(tracking_annot_path):
@@ -234,10 +184,10 @@ def load_tracking_annots(dirs_list, tracking_annot_path: str):
 #
 #     return frame_boxes_lst
 
-def prepare_dataset():
+def prepare_person_annotations():
     # get train, val and test folders in a sorted way
 
-    root_path = pathlib.Path.cwd().parents[2]
+
     output_annot_path = os.path.join(root_path, 'outputs', 'b3_data_structure', 'annots')
     if not os.path.exists(output_annot_path):
         os.makedirs(output_annot_path)
@@ -290,7 +240,7 @@ if __name__ == '__main__':
     # image_level = False
     #
     # tracking_annot_path = os.path.join(dataset_path, 'volleyball_tracking_annot')
-    prepare_dataset()
+    prepare_person_annotations()
 
 
 

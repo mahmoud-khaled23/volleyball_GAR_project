@@ -1,0 +1,36 @@
+# Project paths are relative to this repository root.
+paths:
+#  data paths
+  dataset: data/volleyball
+  videos: data/volleyball/volleyball_/videos
+  tracking_annotations: data/volleyball/volleyball_tracking_annotation/volleyball_tracking_annotation
+#  outputs paths
+  checkpoints: outputs/b1/checkpoints
+  predictions: outputs/b1/predictions
+  plots: outputs/b1/plots
+  logs: outputs/b1/logs
+
+  annotations_output: outputs/b3_data_structure/annots
+  training_output: outputs/training-outputs
+
+dataset:
+  max_players: 12
+  image_size: [224, 224]
+  train_videos: ["1", "3", "6", "7", "10", "13", "15", "16", "18", "22", "23", "31", "32", "36", "38", "39", "40", "41", "42", "48", "50", "52", "53", "54"]
+  validation_videos: ["0", "2", "8", "12", "17", "19", "24", "26", "27", "28", "30", "33", "46", "49", "51"]
+  test_videos: ["4", "5", "9", "11", "14", "20", "21", "25", "29", "34", "35", "37", "43", "44", "45", "47"]
+
+training:
+  batch_size: 8
+  epochs: 25
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: Adam
+  num_workers: 0
+  device: auto
+
+model:
+  backbone: resnet50
+  pretrained: true
+  num_person_classes: 9
+  num_group_classes: 8
