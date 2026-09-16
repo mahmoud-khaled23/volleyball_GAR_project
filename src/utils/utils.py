@@ -74,6 +74,3 @@ def seed(seed):
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
 
-
-
-

@@ -86,8 +86,53 @@ def collate_fn(batch):
 
 from src.utils.preprocessors import person_preprocessor
 
+from torch.utils.data import DataLoader
+
+class DummyPlayerDataset(Dataset):
+    def __init__(self, num_frames=100, num_players=12, num_classes=5):
+        self.num_frames = num_frames
+        self.num_players = num_players
+        self.num_classes = num_classes
+
+    def __len__(self):
+        return self.num_frames
+
+    def __getitem__(self, idx):
+
+        # 12 player images in one frame
+        players = torch.randn(
+            self.num_players, 3, 224, 224
+        )
+
+        # One label for each player
+        labels = torch.randint(
+            0,
+            self.num_classes,
+            (self.num_players,)
+        )
+
+        return players, labels
+
+
+
 
 if __name__ == '__main__':
+    print(('-'*20)+' dummies dataset '+('-'*20))
+
+    dataset = DummyPlayerDataset()
+
+    dummies_dataloader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True
+    )
+
+    players, labels = next(iter(dummies_dataloader))
+
+    print("Players:", players.shape)
+    print("Labels:", labels.shape)
+
+
     print(('-'*20)+' volleyball dataset '+('-'*20))
     # train_dct, val_dct = b1_load()
     person_train_path = PERSON_ANNOTATIONS_DIR / 'train_players_crops.pickle'

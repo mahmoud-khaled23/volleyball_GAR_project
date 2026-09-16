@@ -3,18 +3,18 @@ import torch
 from torch import nn
 import torchvision.models as models
 
-from
+# from
 
 # Baseline 1 is working on the image level with spatial model. >> No temporal <<
 # The model is based on fine-tuning pretrained resnet50 on fc7 layer
 #
 class GroupActivityClassifier(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, person_feature_extraction_model, num_classes):
         super(GroupActivityClassifier, self).__init__()
         self.num_classes = num_classes
 
-        model = models.resnet50(pretrained=True)
-        model = nn.Sequential(*(list(model.children())[:-1]))
+        model = nn.Sequential(*(list(person_feature_extraction_model.children())[:-1]))
+
 
         fc_layers = nn.Sequential(
             nn.Dropout(0.5, inplace=False),

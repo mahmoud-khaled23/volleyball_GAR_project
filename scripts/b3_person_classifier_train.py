@@ -6,7 +6,7 @@ from src.utils.utils import EarlyStopping
 
 from src.data_utils.volleyball_dataset import VolleyBallPersonDataset
 from src.utils.preprocessors import person_preprocessor
-from models.b3.person_activity_model import PersonActivityClassifier
+from src.models.b3.person_activity_model import PersonActivityClassifier
 
 from src.utils.utils import load_config
 from src.paths import CONFIGS_DIR, OUTPUT_DIR, PERSON_ANNOTATIONS_DIR
@@ -110,6 +110,7 @@ def fit(model, trainLoader, valLoader, epochs, optimizer, criterion, output_dir,
             print("Early stopping")
             break
 
+from src.data_utils.volleyball_dataset import DummyPlayerDataset
 
 def train_model(model_configs, train_configs, output_checkpoint_dir):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -123,10 +124,13 @@ def train_model(model_configs, train_configs, output_checkpoint_dir):
         train_data = pickle.load(tr)
         val_data = pickle.load(vl)
 
-    dataset = VolleyBallPersonDataset(train_data, preprocess=train_preprocess)
+    dataset = DummyPlayerDataset()
 
-    print(f'dataset size: {len(dataset)}')
-
+    dummies_dataloader = DataLoader(
+        dataset,
+        batch_size=4,
+        shuffle=True
+    )
     batch_size = train_configs['batch_size']
     num_workers = train_configs['num_workers']
 
@@ -162,7 +166,7 @@ def train_model(model_configs, train_configs, output_checkpoint_dir):
     epochs = train_configs['epochs']
 
     model.model_summary()
-    # model.fit(train_loader, val_loader, epochs, output_dir=output_checkpoint_dir, device=device)
+    model.fit(train_loader, val_loader, epochs, output_dir=output_checkpoint_dir, device=device)
 
 if __name__ == '__main__':
     b3_config_path = CONFIGS_DIR / 'b3_person_train_config.yaml'
@@ -172,7 +176,7 @@ if __name__ == '__main__':
     train_configs = b3_config.training
     b3_person_checkpoint_dir = OUTPUT_DIR / 'b3' / 'person_activity'
 
-    train_model(model_configs, train_configs, b3_person_checkpoint_dir)
+    # train_model(model_configs, train_configs, b3_person_checkpoint_dir)
     print(train_configs)
 
 
